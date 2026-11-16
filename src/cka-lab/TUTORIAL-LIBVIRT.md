@@ -97,6 +97,129 @@ Substitute `worker1` or `worker2` when repairing a worker. This does not install
 packages or initialize Kubernetes; missing prerequisites require a full
 `vagrant provision <node>` after fixing any package-access failures.
 
+## Troubleshooting Incomplete Provisioning
+
+If validation finds the correct hostname/IP but reports missing `containerd`,
+`kubeadm`, `kubelet`, or `kubectl`, provisioning may have stopped during package
+installation. "Machine already provisioned" does not prove the installation
+finished. Do not destroy the guest or run `kubeadm init` to fix this.
+
+Run these from the lab directory on the **host**, substituting the affected node:
+
+```bash
+vagrant ssh worker1 -c 'sudo tail -n 60 /var/log/cka-provision.log'
+vagrant ssh worker1 -c 'timeout 15 resolvectl query mirrors.edge.kernel.org'
+vagrant ssh worker1 -c 'curl --noproxy "*" -I --connect-timeout 5 --max-time 15 https://1.1.1.1/'
+```
+
+The log records the failing step. `Temporary failure resolving` indicates a DNS
+problem; `resolvectl query` can identify a DNSSEC failure. An HTTP response from
+the IP-only HTTPS check proves that connection worked without DNS. A timeout
+requires further network investigation; it does not by itself prove UFW is the
+cause. Use the actual repository hostname from the log if your box uses another
+Ubuntu mirror.
+
+### Host UFW blocks guest traffic
+
+On a host using UFW, inspect the rules as an administrator:
+
+```bash
+sudo ufw status verbose
+sudo nft list ruleset
+ip -4 route show default
+virsh -c qemu:///system net-info cka-management
+```
+
+UFW's default `deny (routed)` can block new guest DNS/HTTPS connections even
+when libvirt's separate nftables chain accepts them. An accept in one base
+chain does not override a drop in another. DNS queries to the host's libvirt
+gateway also need an input allowance; a DHCP allowance alone is insufficient.
+
+If this matches your ruleset, add scoped allowances on the **host**. The example
+below uses `virbr1` for `cka-management` and `wlan0` for the default-route uplink.
+Replace both with the interfaces reported above; bridge names are not fixed.
+Run this block in **Bash**, not Fish:
+
+```bash
+MGMT_BRIDGE=virbr1
+UPLINK=wlan0
+sudo ufw route allow in on "$MGMT_BRIDGE" out on "$UPLINK" from 172.28.50.0/24
+sudo ufw allow in on "$MGMT_BRIDGE" from 172.28.50.0/24 to 172.28.50.1 port 53 proto udp
+sudo ufw allow in on "$MGMT_BRIDGE" from 172.28.50.0/24 to 172.28.50.1 port 53 proto tcp
+sudo ufw status verbose
+```
+
+These rules retain the default deny policies. Do not disable UFW, change its
+global routed policy to allow, or edit libvirt-managed nftables tables. Update
+the uplink rule if you switch host interfaces. These allowances address
+management-network internet/DNS access, not all possible cluster-network rules.
+
+### Guest DNSSEC validation fails
+
+After host connectivity is fixed, the guest resolver may still report:
+
+```text
+DNSSEC validation failed: incompatible-server
+DNSSEC validation failed: missing-key
+```
+
+For this local training lab, a workaround is to disable DNSSEC validation
+**inside each affected guest**. This removes DNSSEC authenticity checking for
+that guest, but does not disable HTTPS certificate verification or the host
+firewall. Do not apply it merely because a package download failed; first
+confirm the DNSSEC error. Production environments should investigate the
+resolver/upstream validation failure instead of adopting this workaround.
+
+From the host, open the affected guest:
+
+```bash
+vagrant ssh worker1
+```
+
+Run the following **inside the guest**:
+
+```bash
+sudo mkdir -p /etc/systemd/resolved.conf.d
+sudo tee /etc/systemd/resolved.conf.d/cka-lab.conf >/dev/null <<'EOF'
+[Resolve]
+DNSSEC=no
+EOF
+sudo systemctl restart systemd-resolved
+timeout 15 getent ahostsv4 mirrors.edge.kernel.org
+timeout 15 getent ahostsv4 pkgs.k8s.io
+curl -I --connect-timeout 5 --max-time 15 https://pkgs.k8s.io/
+exit
+```
+
+Both lookups must return addresses and exit zero. The HTTPS check must complete
+with an HTTP response, not a timeout or TLS error; a redirect is acceptable for
+this connectivity check. If any check fails, diagnose it before provisioning.
+Repeat for every affected node: changing `control1` does not change the workers.
+The drop-in persists across restarts but is lost when the guest is destroyed.
+To undo it, remove `/etc/systemd/resolved.conf.d/cka-lab.conf` inside that guest
+and restart `systemd-resolved`.
+
+### Resume installation and validate
+
+Once DNS/HTTPS checks pass, run from the **host** for each affected node:
+
+```bash
+vagrant provision worker1 --provision-with cka-prereqs
+vagrant ssh worker1 -c 'bash -s' < lib/validate-node.sh
+```
+
+This reruns prerequisite installation without initializing or joining Kubernetes.
+Require `ALL CHECKS PASSED` on all three nodes before saving the pre-cluster
+snapshot and continuing the course. A repair on one node is not evidence that
+the others are ready.
+
+Verification record (2026-11-16): the scoped UFW rules restored guest IP-only
+HTTPS access; the DNSSEC workaround restored repository DNS/HTTPS access;
+rerunning `cka-prereqs` on both workers completed successfully. The live node
+validators reported `ALL CHECKS PASSED` for `control1`, `worker1`, and `worker2`.
+This did not verify reboot persistence, cross-node connectivity, or cluster
+readiness, and does not establish that every DNS failure has the same cause.
+
 ## Build a Cluster
 
 ```bash
@@ -148,7 +271,7 @@ Check that the named snapshot exists on all three VMs before restoring.
 Vagrant processes snapshots per VM, not transactionally: if any save or restore
 fails, keep every VM halted and resolve the failure before starting the cluster.
 This does not provide the Hyper-V wrappers' all-or-nothing preflight guarantees.
- 
+
 Use `vagrant halt` for daily shutdown and `vagrant up --provider=libvirt --no-provision`
 to resume. `vagrant destroy` deletes the guests and their snapshots; it is not
 a shutdown command.
