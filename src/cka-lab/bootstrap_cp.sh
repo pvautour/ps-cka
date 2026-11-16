@@ -26,8 +26,8 @@ set -euo pipefail
 CALICO_VERSION="v3.29.1"
 POD_CIDR="192.168.0.0/16"
 
-# Detect the node's IP on the default interface (DHCP from Hyper-V Default Switch)
-CP_IP=$(hostname -I | awk '{print $1}')
+CP_IP=${CP_IP:-$(ip -4 -o addr show | awk '$4 ~ /^192[.]168[.]50[.]/ {split($4, address, "/"); print address[1]; exit}')}
+CP_IP=${CP_IP:-$(hostname -I | awk '{print $1}')}
 echo "Control plane IP detected: $CP_IP"
 echo "Workers will need this IP to join the cluster."
 echo ""
@@ -46,6 +46,8 @@ echo "Installing CNI (Calico ${CALICO_VERSION} via Tigera operator)..."
 # Two manifests, in order: the operator, then the Installation CR it watches.
 kubectl create -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/tigera-operator.yaml"
 kubectl create -f "https://raw.githubusercontent.com/projectcalico/calico/${CALICO_VERSION}/manifests/custom-resources.yaml"
+kubectl patch installation default --type=merge \
+  -p '{"spec":{"calicoNetwork":{"nodeAddressAutodetectionV4":{"kubernetes":"NodeInternalIP"}}}}'
 
 echo ""
 echo "Waiting for Calico to come up (calico-system/calico-node)..."

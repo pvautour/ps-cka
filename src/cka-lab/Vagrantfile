@@ -1,6 +1,9 @@
 Vagrant.configure("2") do |config|
+  windows_host = Vagrant::Util::Platform.windows?
+  ENV["VAGRANT_DEFAULT_PROVIDER"] ||= windows_host ? "hyperv" : "libvirt"
   config.vm.box = "generic/ubuntu2204"
   config.vm.box_check_update = false
+  config.vm.synced_folder ".", "/vagrant", disabled: true unless windows_host
 
   # --- Kubernetes version (override for the Module 2 upgrade lab) -----------
   # Defaults reproduce the current v1.35 lab byte-for-byte when these env vars
@@ -13,13 +16,15 @@ Vagrant.configure("2") do |config|
   K8S_PKG_VERSION = ENV.fetch("CKA_K8S_PKG_VERSION", "1.35.0-1.1")
 
   # --- Create the CKA-NAT switch before first VM boots ---
-  config.trigger.before :up do |trigger|
-    trigger.info = "Ensuring CKA-NAT Hyper-V switch exists..."
-    trigger.run = {
-      privileged: "true",
-      powershell_elevated_interactive: "true",
-      path: "./create-nat-switch.ps1"
-    }
+  if windows_host
+    config.trigger.before :up do |trigger|
+      trigger.info = "Ensuring CKA-NAT Hyper-V switch exists..."
+      trigger.run = {
+        privileged: "true",
+        powershell_elevated_interactive: "true",
+        path: "./create-nat-switch.ps1"
+      }
+    end
   end
 
   # --- Node definitions: hostname => static IP ---
@@ -45,14 +50,23 @@ Vagrant.configure("2") do |config|
         h.enable_automatic_checkpoints = false
       end
 
-      # Use CKA-NAT switch instead of Default Switch.
-      # auto_config: false tells Vagrant NOT to write its own network config —
-      # netplan (below) becomes the sole authority for the interface, which
-      # avoids a race between Vagrant's DHCP attempt and our static IP.
-      node.vm.network "public_network", bridge: "CKA-NAT", auto_config: false
+      node.vm.provider "libvirt" do |libvirt|
+        libvirt.driver = "kvm"
+        libvirt.memory = 2048
+        libvirt.cpus = 2
+        libvirt.management_network_name = "cka-management"
+        libvirt.management_network_address = "172.28.50.0/24"
+      end
 
-      # --- Static IP via netplan ---
-      node.vm.provision "shell", name: "static-ip", inline: <<-NETPLAN
+      if windows_host
+        # Use CKA-NAT switch instead of Default Switch.
+        # auto_config: false tells Vagrant NOT to write its own network config —
+        # netplan (below) becomes the sole authority for the interface, which
+        # avoids a race between Vagrant's DHCP attempt and our static IP.
+        node.vm.network "public_network", bridge: "CKA-NAT", auto_config: false
+
+        # --- Static IP via netplan ---
+        node.vm.provision "shell", name: "static-ip", inline: <<-NETPLAN
         set -euo pipefail
 
         echo "[+] Configuring static IP #{ip} on $(hostname)..."
@@ -107,7 +121,41 @@ YAML
           netplan apply
         fi
         echo "[OK] Static IP #{ip} applied on $IFACE"
-      NETPLAN
+        NETPLAN
+      else
+        node.vm.network "private_network", ip: ip, auto_config: false,
+          libvirt__network_name: "cka-lab",
+          libvirt__host_ip: GATEWAY,
+          libvirt__forward_mode: "nat",
+          libvirt__dhcp_enabled: false
+
+        node.vm.provision "shell", name: "libvirt-network",
+          env: { "NODE_NAME" => name, "NODE_IP" => ip },
+          inline: <<-'LINUX_NETWORK'
+        set -euo pipefail
+        test -d /sys/class/net/eth1
+        hostnamectl set-hostname "$NODE_NAME"
+        install -m 600 /dev/null /etc/netplan/60-cka-lab.yaml
+        cat > /etc/netplan/60-cka-lab.yaml <<EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth1:
+      dhcp4: false
+      dhcp6: false
+      addresses: [${NODE_IP}/24]
+EOF
+        netplan generate
+        netplan apply
+        test "$(hostname)" = "$NODE_NAME"
+        timeout 15 bash -c '
+          until ip -4 -o address show dev eth1 | awk "{print \$4}" | grep -Fx "${NODE_IP}/24"; do
+            sleep 1
+          done
+        '
+        LINUX_NETWORK
+      end
 
       # --- /etc/hosts so nodes can resolve each other ---
       node.vm.provision "shell", name: "hosts-file", inline: <<-HOSTS
@@ -125,7 +173,8 @@ YAML
 
       # --- Main CKA prereq provisioner ---
       node.vm.provision "shell", name: "cka-prereqs",
-        env: { "K8S_MINOR" => K8S_MINOR, "K8S_PKG_VERSION" => K8S_PKG_VERSION },
+        env: { "K8S_MINOR" => K8S_MINOR, "K8S_PKG_VERSION" => K8S_PKG_VERSION,
+               "NODE_IP" => ip },
         inline: <<-'SHELL'
         #!/usr/bin/env bash
         #================================================================
@@ -286,6 +335,7 @@ EOF
         # lines and break the runbook's "three holds" narration in Demo 4.
         retry apt_install cri-tools
         apt-mark hold kubelet kubeadm kubectl
+        printf 'KUBELET_EXTRA_ARGS="--node-ip=%s"\n' "$NODE_IP" > /etc/default/kubelet
         systemctl enable kubelet
         log "    installed $K8S_PKG_VERSION (+ crictl) and held k8s packages"
 
@@ -354,8 +404,13 @@ BASHRC
       puts ""
       puts "  Credentials: see README.md (not logged here)"
       puts "  Vagrant:   vagrant ssh <node>"
-      puts "  Validate:  .\\cka-validate.ps1"
-      puts "  Snapshot:  .\\cka-snapshot.ps1"
+      if windows_host
+        puts "  Validate:  .\\Test-CkaLabReady.ps1"
+        puts "  Snapshot:  .\\Save-CkaSnapshot.ps1"
+      else
+        puts "  Validate:  vagrant ssh <node> -c 'bash -s' < lib/validate-node.sh"
+        puts "  Snapshot:  vagrant halt && vagrant snapshot save <name>"
+      end
       puts ""
       puts "=" * 60
       puts ""

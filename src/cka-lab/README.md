@@ -1,15 +1,36 @@
-# CKA Lab -- Hyper-V + Vagrant
+# CKA Lab -- Vagrant with Hyper-V or libvirt
 
 > *The CKA exam doesn't care how you got here. It only cares whether `kubeadm init`
 > is muscle memory and whether you can debug a crashlooping pod before the timer beeps.*
 
-Three Ubuntu 22.04 VMs on Hyper-V (**control1**, **worker1**, **worker2**), real
+Three Ubuntu 22.04 VMs on Hyper-V (Windows) or libvirt/KVM (Linux)
+(**control1**, **worker1**, **worker2**), real
 systemd, real kubeadm, real containerd. No Docker-in-Docker shortcuts -- this is
 the exam-shaped lab.
 
 ---
 
 ## Quickstart
+
+### Linux (libvirt/KVM)
+
+With Vagrant and the `vagrant-libvirt` plugin installed and access to
+`qemu:///system` configured:
+
+```bash
+vagrant up --provider=libvirt
+vagrant ssh control1 -c 'bash -s' < lib/validate-node.sh
+vagrant halt
+vagrant snapshot save pre-cluster
+vagrant up --provider=libvirt --no-provision
+vagrant ssh control1
+```
+
+Setup, validation of all nodes, bootstrap, and snapshot/restore:
+**[TUTORIAL-LIBVIRT.md](TUTORIAL-LIBVIRT.md)**.
+The PowerShell lifecycle, checkpoint, and recording wrappers are Windows-only.
+
+### Windows (Hyper-V)
 
 ```powershell
 # Admin PowerShell (Hyper-V cmdlets require elevation, every time)
@@ -71,6 +92,9 @@ per-module snapshot/restore loop and the on-rails upgrade/Helm demos.
 
 ## Prerequisites
 
+For Linux prerequisites, see **[TUTORIAL-LIBVIRT.md](TUTORIAL-LIBVIRT.md)**.
+The following prerequisites apply to Windows:
+
 - **Windows 11 Pro / Enterprise** (Hyper-V is gated out of Home)
 - **Hyper-V** feature enabled (reboot required)
 - **[Vagrant](https://developer.hashicorp.com/vagrant/install)** 2.4.x+
@@ -121,6 +145,7 @@ More troubleshooting in **[TUTORIAL-HYPERV.md](TUTORIAL-HYPERV.md)**.
 
 ## Deeper Reading
 
+- **[TUTORIAL-LIBVIRT.md](TUTORIAL-LIBVIRT.md)** -- Linux/KVM setup, networking, bootstrap, and snapshots
 - **[TUTORIAL-HYPERV.md](TUTORIAL-HYPERV.md)** -- step-by-step Hyper-V walkthrough, snapshot strategy, the practice loop
 - **[RECORDING-WORKFLOW.md](RECORDING-WORKFLOW.md)** -- per-module recording loop, on-rails upgrade/Helm demos
 - **[CLAUDE.md](CLAUDE.md)** -- architecture and code-level guidance (read this before editing any script)

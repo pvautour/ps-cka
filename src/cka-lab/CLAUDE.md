@@ -8,7 +8,7 @@ When users want to **DO** things (run the lab, drive a snapshot/restore loop, pr
 
 ## What This Is
 
-CKA (Certified Kubernetes Administrator) lab environment for Tim Warner's Pluralsight training content. **Hyper-V + Vagrant only** -- three Ubuntu 22.04 VMs with real kubeadm v1.35, systemd, apt, and a snapshot-and-rollback practice loop. There is no Docker-based/KIND path; an earlier KIND-based lab was retired because it doesn't teach real `kubeadm init`/CNI-install muscle memory, which the CKA exam demands.
+CKA (Certified Kubernetes Administrator) lab environment for Tim Warner's Pluralsight training content. **Vagrant with Hyper-V on Windows or libvirt/KVM on Linux** -- three Ubuntu 22.04 VMs with real kubeadm v1.35, systemd, apt, and a snapshot-and-rollback practice loop. There is no Docker-based/KIND path; an earlier KIND-based lab was retired because it doesn't teach real `kubeadm init`/CNI-install muscle memory, which the CKA exam demands.
 
 ## Repository Layout
 
@@ -63,6 +63,17 @@ There is no `$Script:CkaLabRoot`. Scripts use `$PSScriptRoot` or `Join-Path $PSS
 All entry-point scripts live flat at the repo root (`src/cka-lab/`) -- there is no course-specific subfolder duplicating the engine. If a course needs a specialized demo (e.g. the Module 2 upgrade walkthrough), it's a new `Invoke-*.ps1` at the root, not a copy of the whole engine.
 
 ### Vagrant / Hyper-V Path
+
+On Linux, the Vagrantfile defaults to libvirt and skips the Windows switch trigger
+and Windows netplan provisioner. The Linux `libvirt-network` provisioner sets
+hostnames and configures the box's lab NIC (`eth1`) using netplan, preserving
+management DHCP on `eth0`. Vagrant manages a static `cka-lab` network on
+192.168.50.0/24 plus a DHCP `cka-management` network on 172.28.50.0/24 for SSH.
+Keep management outside Calico's pod range. Kubelet uses the configured lab IP,
+bootstrap prefers that address, and Calico selects Kubernetes `NodeInternalIP`.
+The default synced folder is disabled on Linux. See `TUTORIAL-LIBVIRT.md` for the
+Linux workflow; the PowerShell wrappers remain Hyper-V-specific, and Vagrant's
+per-VM snapshots do not inherit their all-or-nothing guarantees.
 
 `Vagrantfile` provisions 3 Ubuntu 22.04 VMs (control1, worker1, worker2) on a dedicated NAT switch (`CKA-NAT`, 192.168.50.0/24) with static IPs. Key design points to preserve:
 
