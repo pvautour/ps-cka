@@ -84,7 +84,7 @@ $ErrorActionPreference = 'Stop'
 # Teaching demo: a remote command that exits nonzero must NOT halt the script.
 $PSNativeCommandUseErrorActionPreference = $false
 
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 
 $AllVMs     = (Get-CkaLabVMs)
@@ -143,7 +143,7 @@ function Push-DemoTree {
     # Copy the repo's m03 manifest tree onto the node as text (LF-normalized) over
     # the same stdin->ssh path the validator uses. One source of truth, no
     # synced-folder dependency.
-    $src = (Resolve-Path (Join-Path $PSScriptRoot '..\..\exercise-files\course-03-lifecycle-upgrades\m03-helm-kustomize-crds')).Path
+    $src = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\exercise-files\course-03-lifecycle-upgrades\m03-helm-kustomize-crds')).Path
     $files = Get-ChildItem -Path $src -Recurse -File -Filter *.yaml
     [void](vagrant ssh $Node -c "rm -rf '$RemoteBase'")
     foreach ($f in $files) {

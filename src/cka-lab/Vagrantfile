@@ -1,3 +1,5 @@
+require "json"
+
 Vagrant.configure("2") do |config|
   windows_host = Vagrant::Util::Platform.windows?
   ENV["VAGRANT_DEFAULT_PROVIDER"] ||= windows_host ? "hyperv" : "libvirt"
@@ -11,7 +13,7 @@ Vagrant.configure("2") do |config|
   # the HOST before `vagrant up` (admin PowerShell):
   #   $env:CKA_K8S_MINOR       = "1.34"
   #   $env:CKA_K8S_PKG_VERSION = "1.34.6-1.1"   # exact patch: apt-cache madison kubeadm
-  # Record the M02 upgrade to v1.35, then reset with .\cka-restore.ps1.
+  # Record the M02 upgrade to v1.35, then reset with .\windows\Restore-CkaSnapshot.ps1.
   K8S_MINOR       = ENV.fetch("CKA_K8S_MINOR", "1.35")
   K8S_PKG_VERSION = ENV.fetch("CKA_K8S_PKG_VERSION", "1.35.0-1.1")
 
@@ -22,17 +24,14 @@ Vagrant.configure("2") do |config|
       trigger.run = {
         privileged: "true",
         powershell_elevated_interactive: "true",
-        path: "./create-nat-switch.ps1"
+        path: "./windows/create-nat-switch.ps1"
       }
     end
   end
 
   # --- Node definitions: hostname => static IP ---
-  NODES = {
-    "control1" => "192.168.50.10",
-    "worker1"  => "192.168.50.11",
-    "worker2"  => "192.168.50.12",
-  }
+  NODES = JSON.parse(File.read(File.join(__dir__, "lib", "nodes.json")))
+    .to_h { |node| [node.fetch("Name"), node.fetch("IP")] }
 
   GATEWAY = "192.168.50.1"
   DNS     = "8.8.8.8"
@@ -405,8 +404,8 @@ BASHRC
       puts "  Credentials: see README.md (not logged here)"
       puts "  Vagrant:   vagrant ssh <node>"
       if windows_host
-        puts "  Validate:  .\\Test-CkaLabReady.ps1"
-        puts "  Snapshot:  .\\Save-CkaSnapshot.ps1"
+        puts "  Validate:  .\\windows\\Test-CkaLabReady.ps1"
+        puts "  Snapshot:  .\\windows\\Save-CkaSnapshot.ps1"
       else
         puts "  Validate:  vagrant ssh <node> -c 'bash -s' < lib/validate-node.sh"
         puts "  Snapshot:  vagrant halt && vagrant snapshot save <name>"

@@ -1,23 +1,23 @@
 <#
 .SYNOPSIS
-    Get the 3-node Hyper-V lab recording-ready for CKA Course 4 / Module 2
-    (ServiceAccounts and Least-Privilege Access).
+    Get the 3-node Hyper-V lab recording-ready for CKA Course 4 / Module 1
+    (Authentication, Authorization, and RBAC Fundamentals).
 
 .DESCRIPTION
     One command between "my VMs are off" and "I can hit record." It boots the
     lab, proves the cluster is actually healthy, stages the module's exercise
-    files on the control plane, GATES the seven ServiceAccount facts the deck asserts out
+    files on the control plane, GATES the five RBAC facts the deck asserts out
     loud, scrubs anything a prior take left behind, and checkpoints the result.
 
     WHY A FACT GATE. This module says five specific things on camera -- for
-    example "expirationSeconds is 3607" and "no Secret is auto-created." Those
+    example "view never reads Secrets" and "edit reads AND writes them." Those
     are properties of the cluster's bootstrapped RBAC policy, not of the deck.
     If a future Kubernetes release changes one, the deck becomes wrong and the
     only place you would find out is mid-take. So the gate asks the live
     cluster all five and refuses a green light on any drift. An assertion about
     your own content proves nothing; the cluster's answer proves something.
 
-    WHAT IT DOES NOT DO. It never drives the demo. Module 2 is typed live on
+    WHAT IT DOES NOT DO. It never drives the demo. Module 1 is typed live on
     camera, because watching a human build a Role is the pedagogy. This script
     only guarantees the starting frame is identical every take.
 
@@ -38,28 +38,28 @@
     already hold a good save point.
 
 .PARAMETER SnapshotName
-    Checkpoint name written at the end. Default 'c04-m02-rbac-ready'.
+    Checkpoint name written at the end. Default 'c04-m01-rbac-ready'.
 
 .PARAMETER Node
     The control-plane node to drive. Default 'control1'.
 
 .EXAMPLE
-    .\Initialize-C04M02Lab.ps1
+    .\Initialize-C04M01Lab.ps1
     The normal path. Boot, verify, stage, gate, scrub, checkpoint.
 
 .EXAMPLE
-    .\Initialize-C04M02Lab.ps1 -Bootstrap
+    .\Initialize-C04M01Lab.ps1 -Bootstrap
     First run on freshly provisioned VMs -- also does kubeadm init and the joins.
 
 .EXAMPLE
-    .\Initialize-C04M02Lab.ps1 -SkipBoot -SkipSnapshot
+    .\Initialize-C04M01Lab.ps1 -SkipBoot -SkipSnapshot
     Fast reset between takes on an already-running lab.
 
 .NOTES
     Author:  Tim Warner | CKA lab (control1, worker1, worker2)
     Run as:  Administrator PowerShell 7+, from C:\github\ps-cka\src\cka-lab
              (Hyper-V cmdlets require elevation, every time, no exceptions)
-    Pairs with: exercise-files\course-04-rbac-admission\m02-serviceaccounts\c04-m02-demo-runbook.md
+    Pairs with: exercise-files\course-04-rbac-admission\m01-rbac-fundamentals\c04-m01-demo-runbook.md
     Exit codes: 0 = recording-ready, 1 = a gate failed (read the [ERROR] lines)
 #>
 
@@ -73,7 +73,7 @@ param(
     [switch]$SkipSnapshot,
 
     [ValidateNotNullOrEmpty()]
-    [string]$SnapshotName = 'c04-m02-rbac-ready',
+    [string]$SnapshotName = 'c04-m01-rbac-ready',
 
     [ValidateNotNullOrEmpty()]
     [string]$Node = 'control1'
@@ -84,13 +84,13 @@ $ErrorActionPreference = 'Stop'
 # in an RBAC course). Native exit codes must not abort the script.
 $PSNativeCommandUseErrorActionPreference = $false
 
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 Initialize-LabPath
 
 $AllVMs      = Get-CkaLabVMs
 $LabNodes    = Get-CkaLabNodes
-$RemoteBase  = '/home/vagrant/m02'
+$RemoteBase  = '/home/vagrant/m01'
 $ExpectMinor = '1.35'
 $Failures    = [System.Collections.Generic.List[string]]::new()
 $Script:LastNodeRC = -1
@@ -98,7 +98,7 @@ $Script:LastNodeRC = -1
 # Push-Location with no finally leaves the caller's location stack dirty on any
 # terminating error. Register the pop on the engine's exit event so it happens
 # whether we exit cleanly, throw, or the user hits Ctrl-C.
-Push-Location $PSScriptRoot
+Push-Location (Join-Path $PSScriptRoot '..')
 $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
     Pop-Location -ErrorAction SilentlyContinue
 }
@@ -119,11 +119,7 @@ function Invoke-Node {
     # negative assertion ("this output must NOT contain 'secrets'") passes
     # whenever the command fails outright and prints nothing -- a false pass
     # on the exact check that is supposed to stop a bad recording.
-    # NEWLINE, not "; ". Several gate commands are multi-line here-strings, and a
-    # semicolon appended after a trailing newline produces a line that STARTS with
-    # ';' -- a bash syntax error. A newline separator is correct for both a
-    # one-liner and a multi-line script.
-    $out = vagrant ssh $Node -c "$Command`necho __RC__=`$?" 2>&1
+    $out = vagrant ssh $Node -c "$Command; echo __RC__=`$?" 2>&1
     $text = ($out | Out-String)
     if ($text -match '__RC__=(\d+)') { $Script:LastNodeRC = [int]$Matches[1] }
     else { $Script:LastNodeRC = -1 }   # sentinel never arrived: ssh itself failed
@@ -278,10 +274,10 @@ function Push-ModuleAssets {
         bash script. Also lands setup-contexts.sh in the home directory as the
         on-camera safety net.
     #>
-    $srcDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\exercise-files\course-04-rbac-admission\m02-serviceaccounts')).Path
-    $ctxSrc = (Resolve-Path (Join-Path $PSScriptRoot '..\..\exercise-files\course-04-rbac-admission\setup-contexts.sh')).Path
+    $srcDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\exercise-files\course-04-rbac-admission\m01-rbac-fundamentals')).Path
+    $ctxSrc = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\exercise-files\course-04-rbac-admission\setup-contexts.sh')).Path
 
-    # Clear the CONTENTS, never the directory itself. `rm -rf ~/m02` yanks the
+    # Clear the CONTENTS, never the directory itself. `rm -rf ~/m01` yanks the
     # working directory out from under any SSH session Tim already has open
     # there, and his next `./lab.sh` fails with a cryptic "No such file or
     # directory" for the cwd rather than for the script.
@@ -291,7 +287,7 @@ function Push-ModuleAssets {
     # START-HERE.md are read on Tim's second monitor, not on control1 --
     # staging them cost ~60KB of base64 across dozens of round trips for
     # nothing. Fewer, smaller transfers is also fewer chances to hang.
-    $wanted = @('lab.sh', 'deploy-runner.yaml', 'ghost-sa.yaml', 'no-automount.yaml')
+    $wanted = @('lab.sh', 'frontend-dev-csr.yaml', 'pod-reader.yaml')
     $files  = Get-ChildItem -Path $srcDir -File | Where-Object { $wanted -contains $_.Name }
 
     $missing = $wanted | Where-Object { $_ -notin $files.Name }
@@ -376,7 +372,7 @@ $apiProbe = Invoke-Node -Command 'kubectl get --raw=/readyz 2>/dev/null || echo 
 if ($apiProbe -match '__NOCLUSTER__' -or $apiProbe -notmatch 'ok') {
     if (-not $Bootstrap) {
         Write-ErrorMsg 'No cluster is answering on this lab, and -Bootstrap was not set.'
-        Write-Info     'Re-run with:  .\Initialize-C04M02Lab.ps1 -Bootstrap'
+        Write-Info     'Re-run with:  .\Initialize-C04M01Lab.ps1 -Bootstrap'
         Pop-Location
         exit 1
     }
@@ -519,109 +515,40 @@ else { Write-Warn "Could not confirm the cka-vagrant context: $ctxOut"; $Failure
 
 #region 5. The fact gate --------------------------------------------------------
 
-Write-Step 'Fact gate -- the seven claims this module makes out loud'
+Write-Step 'Fact gate -- the five claims this module makes out loud'
 
-# EVERY remote command below is a SINGLE-QUOTED here-string. That is not style.
-# In a double-quoted PowerShell string, \" does NOT escape a quote -- it ENDS the
-# string, so the argument silently splits and reaches the remote shell malformed.
-# These commands are full of embedded quotes (jsonpath, --overrides JSON, grep
-# patterns), so here-strings are the only safe carrier. Nothing is interpolated,
-# which means $VAR and "quotes" arrive on the node exactly as written.
+# CLAIM 1. A user with zero grants can still call `kubectl auth whoami`, because
+# system:basic-user is bound to the system:authenticated group. This is what makes
+# Beat 1 land: identity is free, authorization is not.
+Test-Gate -Name 'system:basic-user is bound to system:authenticated' `
+          -Command "kubectl get clusterrolebinding system:basic-user -o jsonpath='{.subjects}'" `
+          -Match   'system:authenticated'
 
-$GateSecrets = @'
-kubectl create ns gateprobe --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-kubectl -n gateprobe create sa g --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-sleep 2
-echo "SECRETS=[$(kubectl -n gateprobe get sa g -o jsonpath='{.secrets}')]"
-'@
+# CLAIM 2. view never reads Secrets. Deck slides 14, 15, and 25 all say so.
+# Deliberately jsonpath and NOT `describe | grep`: grep exits 1 when it finds
+# nothing, which is indistinguishable from the whole command failing. jsonpath
+# exits 0 and prints the full resource list, so "no match" is real evidence.
+Test-Gate -Name 'view has NO rule mentioning Secrets' `
+          -Command "kubectl get clusterrole view -o jsonpath='{range .rules[*]}{.resources}{`"|`"}{end}'" `
+          -Match   'secrets' -ShouldNotMatch
 
-$GateGates = @'
-kubectl get --raw=/metrics 2>/dev/null | grep -c 'name="LegacyServiceAccountToken' || true
-'@
+# CLAIM 3. edit reads AND writes Secrets -- the most-missed fact on the exam.
+Test-Gate -Name 'edit can write Secrets (create/delete/patch/update)' `
+          -Command "kubectl get clusterrole edit -o jsonpath='{range .rules[*]}{.resources}{`" `"}{.verbs}{`"\n`"}{end}' | grep secrets" `
+          -Match   'update|patch|create'
 
-$GateExp3607 = @'
-kubectl -n gateprobe run gp --image=registry.k8s.io/pause:3.10 --restart=Never \
-  --overrides='{"spec":{"serviceAccountName":"g"}}' >/dev/null 2>&1
-for i in $(seq 1 25); do
-  V=$(kubectl -n gateprobe get pod gp -o jsonpath='{range .spec.volumes[*]}{.projected.sources[*].serviceAccountToken.expirationSeconds}{end}' 2>/dev/null)
-  [ -n "$V" ] && break
-  sleep 1
-done
-echo "EXP=$V"
-'@
+# CLAIM 4. view covers Namespaces. This is precisely why Beat 3's
+# ClusterRoleBinding lets frontend-dev run `kubectl get namespaces` and the
+# RoleBinding never can. If this drifts, Beat 3 breaks on camera.
+Test-Gate -Name 'view covers Namespaces (cluster-scoped reach for Beat 3)' `
+          -Command "kubectl get clusterrole view -o jsonpath='{range .rules[*]}{.resources}{`"\n`"}{end}' | grep namespaces" `
+          -Match   'namespaces'
 
-$GateNoJq = @'
-command -v jq >/dev/null && echo JQ_PRESENT || echo JQ_ABSENT
-'@
-
-$GateFloor = @'
-kubectl -n gateprobe create token g --duration=5m 2>&1 | head -1
-'@
-
-$GateGhost = @'
-kubectl -n gateprobe run ghostgate --image=registry.k8s.io/pause:3.10 --restart=Never \
-  --overrides='{"spec":{"serviceAccountName":"nope"}}' 2>&1 | head -1
-'@
-
-$GateGhostAbsent = @'
-echo "POD=[$(kubectl -n gateprobe get pod ghostgate --ignore-not-found -o name 2>/dev/null)]"
-'@
-
-# Decode the JWT with coreutils only -- jq is not on the node (gate 4 proves it).
-# base64url strips '=' padding and uses -_ , so translate the alphabet AND re-add
-# padding or base64 -d prints "invalid input" and you get a truncated payload.
-$GateExtendedExp = @'
-T=$(kubectl -n gateprobe create token g)
-P=$(printf '%s' "$T" | cut -d. -f2 | tr '_-' '/+')
-case $(( ${#P} % 4 )) in 2) P="${P}==" ;; 3) P="${P}=" ;; esac
-PAY=$(printf '%s' "$P" | base64 -d 2>/dev/null)
-EXP=$(echo "$PAY" | grep -o '"exp":[0-9]*' | head -1 | cut -d: -f2)
-IAT=$(echo "$PAY" | grep -o '"iat":[0-9]*' | head -1 | cut -d: -f2)
-echo "LIFETIME_DAYS=$(( (EXP - IAT) / 86400 ))"
-'@
-
-# CLAIM 1. Creating a ServiceAccount no longer auto-creates a token Secret.
-# That stopped in v1.24, and Demo 1 shows the empty field on camera.
-Test-Gate -Name 'a fresh ServiceAccount has an empty .secrets field' `
-          -Command $GateSecrets -Match 'SECRETS=\[\]'
-
-# CLAIM 2. On v1.35 the legacy-token behavior is unconditional -- all three
-# KEP-2800 feature gates are gone from the binary, so there is nothing to flip.
-# This is the gate that replaces slide 9's wrong "gate in v1.27" clause.
-Test-Gate -Name 'no LegacyServiceAccountToken* feature gate is registered' `
-          -Command $GateGates -Match '^\s*0\s*$'
-
-# CLAIM 3. expirationSeconds is 3607 on the injected volume -- a precise number
-# said out loud on slide 10, which Demo 2 reads off the live object.
-Test-Gate -Name 'expirationSeconds on the injected projected volume is 3607' `
-          -Command $GateExp3607 -Match 'EXP=3607'
-
-# CLAIM 4. jq is NOT on this box. Demo 3 decodes a JWT; if jq ever appears, the
-# lab assumption changed and the coreutils-only claim needs revisiting.
-Test-Gate -Name 'jq is absent (Demo 3 must stay coreutils-only)' `
-          -Command $GateNoJq -Match 'JQ_ABSENT'
-
-# CLAIM 5. The 10-minute floor on --duration. It is why the demo says ten, and
-# Demo 3 shows the rejection deliberately.
-Test-Gate -Name '--duration=5m is refused with the 10-minute floor message' `
-          -Command $GateFloor -Match 'less than 10 minutes'
-
-# CLAIM 6. THE DISPUTED ONE. A Pod naming a missing ServiceAccount is refused at
-# API-server admission and NO Pod object is persisted. The deck is right; the
-# course outline's CreateContainerConfigError claim is wrong.
-Test-Gate -Name 'missing ServiceAccount is rejected at admission (deck is right)' `
-          -Command $GateGhost -Match 'error looking up service account'
-
-Test-Gate -Name 'and no Pod object was persisted for it' `
-          -Command $GateGhostAbsent -Match 'POD=\[\]'
-
-# CLAIM 7. The projected token's exp is extended far past 3607s -- roughly a year
-# -- which is slide 10's subtlest fact and the whole point of Demo 3.
-Test-Gate -Name 'the minted token exp is extended well beyond 3607 seconds' `
-          -Command $GateExtendedExp -Match 'LIFETIME_DAYS=([1-9][0-9]{2,}|[3-9][0-9])'
-
-Write-Step 'Tidying the gate probe namespace'
-[void](Invoke-Node -Command "kubectl delete ns gateprobe --ignore-not-found --wait=false >/dev/null 2>&1; true")
+# CLAIM 5. edit is aggregated by label selector, not hand-written. Beat 4 shows
+# the aggregationRule block on screen.
+Test-Gate -Name 'edit is composed via aggregationRule, not hand-written rules' `
+          -Command "kubectl get clusterrole edit -o jsonpath='{.aggregationRule}'" `
+          -Match   'aggregate-to-edit'
 
 #endregion
 
@@ -673,14 +600,14 @@ Write-Host ""
 Write-Host "$($Script:NeonGreen)===================================================================$($Script:AnsiReset)"
 
 if ($Failures.Count -eq 0) {
-    Write-Success 'Lab is recording-ready for C04 M02'
+    Write-Success 'Lab is recording-ready for C04 M01'
     Write-Host ""
     Write-Host "  Next:  ssh vagrant@$(($LabNodes | Where-Object Name -eq $Node).IP)"
-    Write-Host "         cd ~/m02                            # every script and manifest lives here"
+    Write-Host "         cd ~/m01                            # every script and manifest lives here"
     Write-Host "         ./lab.sh                            # reset + verify, writes ~/dry-run.txt"
     Write-Host "         kubectl config current-context      # cka-vagrant"
     Write-Host ""
-    Write-Host "  Runbook: exercise-files\course-04-rbac-admission\m02-serviceaccounts\c04-m02-demo-runbook.md"
+    Write-Host "  Runbook: exercise-files\course-04-rbac-admission\m01-rbac-fundamentals\c04-m01-demo-runbook.md"
     Write-Host "           Demo 1 opens at [1.0] -- the context command, not [1.1]"
     Write-Host "  Safety net if the live mint goes sideways:  ./lab.sh mint"
     Write-Host ""

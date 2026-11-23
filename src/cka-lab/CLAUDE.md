@@ -19,30 +19,36 @@ cka-lab/
 ├── TUTORIAL-HYPERV.md         # Hands-on walkthrough + practice loop
 ├── RECORDING-WORKFLOW.md      # Per-module recording loop (snapshot/restore, on-rails demos)
 │
-├── Start-CkaLab.ps1           # Entry point: boot all 3 VMs (no re-provision)
-├── Stop-CkaLab.ps1            # Entry point: graceful halt of all 3 VMs
-├── Get-CkaLabStatus.ps1       # Read-only: report Hyper-V VM state, optional teardown prompt
-├── Get-CkaConnectionInfo.ps1  # Connection table with live UP/DOWN status
-├── Test-CkaLabReady.ps1       # Health check across all 3 VMs via stdin pipe
-├── Save-CkaSnapshot.ps1       # Hyper-V checkpoint: save all 3 VMs (atomic)
-├── Restore-CkaSnapshot.ps1    # Hyper-V checkpoint: restore all 3 VMs (atomic)
-├── Remove-CkaSnapshot.ps1     # Inventory/prune checkpoint cruft
-│
-├── Build-M02UpgradeLab.ps1    # Rebuild the 3 VMs clean at v1.34, auto-snapshot for the M02 upgrade demo
-├── Invoke-M02Upgrade.ps1      # On-rails M02 demo: v1.34 -> v1.35 upgrade, phase by phase
-├── Invoke-M03Lab.ps1          # On-rails M03 demo: Helm, Kustomize, CRDs, phase by phase
-├── Invoke-KubeletFlagRepair.ps1  # On-rails repair demo for a stale kubelet flag
+├── windows/                  # Hyper-V PowerShell entry points
+│   ├── Start-CkaLab.ps1       # Boot all 3 VMs (no re-provision)
+│   ├── Stop-CkaLab.ps1        # Graceful halt of all 3 VMs
+│   ├── Get-CkaLabStatus.ps1   # Read-only Hyper-V state, optional teardown prompt
+│   ├── Get-CkaConnectionInfo.ps1  # Connection table with live UP/DOWN status
+│   ├── Test-CkaLabReady.ps1   # Health check across all 3 VMs via stdin pipe
+│   ├── Save-CkaSnapshot.ps1  # Save all 3 VMs (atomic preflight)
+│   ├── Restore-CkaSnapshot.ps1  # Restore all 3 VMs (atomic preflight)
+│   ├── Get-CkaSnapshot.ps1   # Checkpoint inventory
+│   ├── Remove-CkaSnapshot.ps1  # Inventory/prune checkpoint cruft
+│   ├── Build-M02UpgradeLab.ps1  # Clean v1.34 rebuild and M02 snapshot
+│   ├── Invoke-M02Upgrade.ps1 # On-rails v1.34 -> v1.35 upgrade
+│   ├── Invoke-M03Lab.ps1     # On-rails Helm, Kustomize, CRDs demo
+│   ├── Invoke-KubeletFlagRepair.ps1  # Stale kubelet flag repair demo
+│   ├── Initialize-C04M01Lab.ps1  # RBAC lab initializer
+│   ├── Initialize-C04M02Lab.ps1  # ServiceAccounts lab initializer
+│   ├── Initialize-C04M03Lab.ps1  # Admission controls lab initializer
+│   ├── create-nat-switch.ps1 # CKA-NAT switch preflight and creation
+│   └── Repair-CkaNatSwitch.ps1  # Repair the Hyper-V NAT adapter
+├── linux/                    # Bash equivalents and Linux-specific helpers
 │
 ├── lib/
 │   ├── CkaLab.ps1             # Shared module (output helpers, lab topology, UTF-8/PATH setup, host info)
+│   ├── nodes.json             # Single source of node names and IPs
 │   └── validate-node.sh       # Node-level health checks (piped over stdin)
 │
-├── Vagrantfile                # 3-VM Hyper-V cluster (control1/worker1/worker2)
+├── Vagrantfile                # Shared 3-VM Hyper-V/libvirt cluster
 ├── bootstrap_cp.sh            # kubeadm init for Vagrant control plane
 ├── join_worker.sh             # Self-sufficient worker join (fetches fresh token)
 ├── join_worker.sh.template    # Legacy template (preserved)
-├── create-nat-switch.ps1      # Creates CKA-NAT switch with preflight checks
-│
 ├── archive/                   # Stale scripts (legacy multi-action snapshot.ps1)
 └── docs/                      # Architecture diagrams
 ```
@@ -51,16 +57,23 @@ cka-lab/
 
 ### Shared Module: `lib/CkaLab.ps1`
 
-Every entry point dot-sources this file. It provides:
+Windows wrappers dot-source this file via `..\lib\CkaLab.ps1` relative to
+`$PSScriptRoot`; the standalone NAT switch creator does not use it. It provides:
 
 - **Output helpers**: `Write-Step`, `Write-Success`, `Write-Info`, `Write-Warn`, `Write-ErrorMsg` -- every line is labeled (`[OK]`/`[INFO]`/`[WARN]`/`[ERROR]`) on the Wong colorblind-safe palette, so meaning never depends on color alone
-- **Lab topology (single source of truth)**: `Get-CkaLabNodes` (Name+IP objects) and `Get-CkaLabVMs` (names only) -- the ONE definition of `control1`/`worker1`/`worker2`. Every wrapper pulls the node list from here; do not hardcode the three names again
+- **Lab topology**: `Get-CkaLabNodes` (Name+IP objects) and `Get-CkaLabVMs` (names only) read `lib/nodes.json`, the single source of truth also used by Vagrant and Linux wrappers. Do not hardcode the three names again
 - **Environment**: `Initialize-LabEncoding` (forces UTF-8 console/pipeline so vagrant/ssh/kubectl output doesn't garble on the default Windows code page), `Initialize-LabPath` (PATH refresh for winget/Vagrant/System32; uses a HashSet-based dedup so repeat dot-sources don't stack duplicate segments)
 - **Host info**: `Get-HostMemoryInfo`, `Write-HostMemory`
 
-There is no `$Script:CkaLabRoot`. Scripts use `$PSScriptRoot` or `Join-Path $PSScriptRoot ...` directly.
+There is no `$Script:CkaLabRoot`. Windows scripts use `$PSScriptRoot` for sibling
+wrappers and its parent for shared lab resources. The validator resolves
+`..\lib\validate-node.sh`; baseline exports stay in `..\baseline-exports` at the
+lab root. Run Windows commands from `src/cka-lab/`, not `windows/`. C04
+initializers explicitly push the parent lab root for their Vagrant commands.
 
-All entry-point scripts live flat at the repo root (`src/cka-lab/`) -- there is no course-specific subfolder duplicating the engine. If a course needs a specialized demo (e.g. the Module 2 upgrade walkthrough), it's a new `Invoke-*.ps1` at the root, not a copy of the whole engine.
+Entry-point scripts live in `windows/` and `linux/`, with shared resources at the
+lab root (`src/cka-lab/`). A course-specific demo belongs in its platform
+directory, not in a duplicated lab engine.
 
 ### Vagrant / Hyper-V Path
 
@@ -97,7 +110,7 @@ per-VM snapshots do not inherit their all-or-nothing guarantees.
 `Build-M02UpgradeLab.ps1`, `Invoke-M02Upgrade.ps1`, `Invoke-M03Lab.ps1`, and `Invoke-KubeletFlagRepair.ps1` are on-rails demo scripts written for recording sessions, not generic lab plumbing. Invariants to preserve:
 
 - **Recording loop**: `Save-CkaSnapshot <name>` before a take, `Restore-CkaSnapshot <name>` to re-record. M02 builds at v1.34 (env vars above), upgrades to v1.35 on camera -- which is exactly M03's starting state.
-- **`Invoke-M03Lab.ps1` pushes exercise-files, not a synced folder**: it resolves `..\..\exercise-files\course-03-lifecycle-upgrades\m03-helm-kustomize-crds` relative to `$PSScriptRoot` (repo root is two levels up from `src/cka-lab`) and copies that tree onto the node over the same stdin->ssh path the validator uses. One source of truth, no Vagrant synced-folder dependency.
+- **`windows/Invoke-M03Lab.ps1` pushes exercise-files, not a synced folder**: it resolves `..\..\..\exercise-files\course-03-lifecycle-upgrades\m03-helm-kustomize-crds` relative to `$PSScriptRoot` (repo root is three levels up from `src/cka-lab/windows`). C04 initializers use the same three-parent prefix. The tree is copied onto the node over the stdin->ssh path the validator uses. One source of truth, no Vagrant synced-folder dependency.
 - **`Build-M02UpgradeLab.ps1 -ExportBaseline`**: exports the current v1.35 checkpoint to disk BEFORE `vagrant destroy`, since destroy removes the VMs and all their checkpoints. Without this flag, a v1.34 rebuild would permanently lose the v1.35 baseline that M01 re-records and M03 both depend on.
 - Human workflow: [`RECORDING-WORKFLOW.md`](RECORDING-WORKFLOW.md).
 
@@ -118,7 +131,14 @@ This matters because `vagrant ssh -c "<long inlined script>"` has argv-length li
 
 ## Naming Conventions
 
-Node names are deterministic and single-sourced in `lib/CkaLab.ps1` (`Get-CkaLabVMs` / `Get-CkaLabNodes`): **`control1` / `worker1` / `worker2`**, with static IPs `192.168.50.10` / `.11` / `.12`. If a node is ever renamed or added, change it in `lib/CkaLab.ps1` and nowhere else.
+Node names and IPs are single-sourced in `lib/nodes.json`, read by Vagrant,
+`lib/CkaLab.ps1` (`Get-CkaLabVMs` / `Get-CkaLabNodes`), and `linux/lib/cka.sh`.
+If a node is renamed or added, change that JSON file rather than duplicating the
+topology in platform wrappers. Windows entry points live in `windows/`; Bash
+equivalents live in `linux/` and resolve all paths from the parent lab root.
+See `linux/README.md` for Linux behavior and limits. Linux snapshots preflight
+all guests and snapshot names, halt all guests, operate sequentially and leave
+all halted on partial failure; they are not transactional or portable exports.
 
 Every entry-point script uses PowerShell **Verb-Noun** naming (`Start-CkaLab.ps1`, `Save-CkaSnapshot.ps1`, `Invoke-M02Upgrade.ps1`) so the script's action is legible without opening it. This is a deliberate muscle-memory convention -- don't introduce a differently-shaped name (e.g. `cka-up.ps1`) for a new entry point.
 

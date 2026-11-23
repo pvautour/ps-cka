@@ -117,7 +117,7 @@ $ErrorActionPreference = 'Stop'
 # the script.
 $PSNativeCommandUseErrorActionPreference = $false
 
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 Initialize-LabPath
 
@@ -142,7 +142,7 @@ $ProbeNamespaces   = @($ProbeNs, $ProbeQuotaNs, $ProbeOrderNs, $ProbeRestrictedN
 # Push-Location with no finally leaves the caller's location stack dirty on any
 # terminating error. Register the pop on the engine's exit event so it happens
 # whether we exit cleanly, throw, or the user hits Ctrl-C.
-Push-Location $PSScriptRoot
+Push-Location (Join-Path $PSScriptRoot '..')
 $null = Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
     Pop-Location -ErrorAction SilentlyContinue
 }
@@ -385,7 +385,7 @@ function Push-ModuleAssets {
     # Test-Path before Resolve-Path. $ErrorActionPreference is 'Stop', so a bare
     # Resolve-Path on a missing folder terminates the whole run with a raw
     # .NET-flavoured error instead of a sentence that says what to fix.
-    $srcDir = Join-Path $PSScriptRoot '..\..\exercise-files\course-04-rbac-admission\m03-admission-controls'
+    $srcDir = Join-Path $PSScriptRoot '..\..\..\exercise-files\course-04-rbac-admission\m03-admission-controls'
     if (-not (Test-Path -LiteralPath $srcDir)) {
         Write-ErrorMsg "Module folder not found: $srcDir"
         Write-Info     'Run this from src\cka-lab inside the ps-cka repo.'
@@ -393,7 +393,7 @@ function Push-ModuleAssets {
         return
     }
     $srcDir = (Resolve-Path -LiteralPath $srcDir).Path
-    $ctxSrc = Join-Path $PSScriptRoot '..\..\exercise-files\course-04-rbac-admission\setup-contexts.sh'
+    $ctxSrc = Join-Path $PSScriptRoot '..\..\..\exercise-files\course-04-rbac-admission\setup-contexts.sh'
 
     # Clear the CONTENTS, never the directory itself. `rm -rf ~/m03` yanks the
     # working directory out from under any SSH session Tim already has open
@@ -491,7 +491,7 @@ function Push-GateProbeManifests {
         saying `namespace: production`, this refuses to stage it rather than
         risk writing into production.
     #>
-    $srcDir = Join-Path $PSScriptRoot '..\..\exercise-files\course-04-rbac-admission\m03-admission-controls'
+    $srcDir = Join-Path $PSScriptRoot '..\..\..\exercise-files\course-04-rbac-admission\m03-admission-controls'
     if (-not (Test-Path -LiteralPath $srcDir)) {
         Write-ErrorMsg "Module folder not found: $srcDir -- the fact gate cannot run"
         $Failures.Add('Gate probes cannot be built: module folder not found')
@@ -982,7 +982,7 @@ Test-Gate -Name 'describe rs is where the baseline refusal is legible (rung 3 of
 # is not a loud enough failure for this one. If the answer is baseline, the
 # narration has to change, and the script says so in those words.
 # ---------------------------------------------------------------------------
-$hardenedPath = Join-Path $PSScriptRoot '..\..\exercise-files\course-04-rbac-admission\m03-admission-controls\hardened-pod.yaml'
+$hardenedPath = Join-Path $PSScriptRoot '..\..\..\exercise-files\course-04-rbac-admission\m03-admission-controls\hardened-pod.yaml'
 $hardenedText = if (Test-Path -LiteralPath $hardenedPath) { Get-Content -Raw -LiteralPath $hardenedPath } else { '' }
 # The two fields restricted adds on top of baseline. Reported in WORDS, because
 # True/False in a colour is two ways of failing the same reader.

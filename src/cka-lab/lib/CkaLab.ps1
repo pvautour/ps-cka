@@ -68,11 +68,7 @@ function Get-CkaLabNodes {
         Returns the lab nodes as ordered objects (Name + static IP),
         control plane first.
     #>
-    @(
-        [pscustomobject]@{ Name = 'control1'; IP = '192.168.50.10' }
-        [pscustomobject]@{ Name = 'worker1';  IP = '192.168.50.11' }
-        [pscustomobject]@{ Name = 'worker2';  IP = '192.168.50.12' }
-    )
+    Get-Content -Raw (Join-Path $PSScriptRoot 'nodes.json') | ConvertFrom-Json
 }
 
 function Get-CkaLabVMs {

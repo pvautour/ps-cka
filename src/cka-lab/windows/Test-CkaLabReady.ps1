@@ -24,7 +24,7 @@
 [CmdletBinding()]
 param()
 
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 
 $VMs = Get-CkaLabVMs
@@ -33,7 +33,7 @@ $TotalPass = 0
 $TotalWarn = 0
 $TotalFail = 0
 
-$ScriptPath = Join-Path -Path $PSScriptRoot -ChildPath 'lib\validate-node.sh'
+$ScriptPath = Join-Path -Path $PSScriptRoot -ChildPath '..\lib\validate-node.sh'
 if (-not (Test-Path -Path $ScriptPath)) {
     Write-ErrorMsg "Validation script not found at $ScriptPath"
     exit 1

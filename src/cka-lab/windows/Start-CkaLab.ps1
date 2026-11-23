@@ -18,7 +18,7 @@
 #Requires -Version 7.0
 #Requires -RunAsAdministrator
 
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 
 Write-Step 'Starting CKA lab VMs (no re-provision)'

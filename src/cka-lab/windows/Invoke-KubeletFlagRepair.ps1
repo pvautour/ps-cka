@@ -69,7 +69,7 @@ $ErrorActionPreference = 'Stop'
 
 # Reuse the shared engine: Write-* palette helpers, Initialize-LabEncoding,
 # Get-CkaLabNodes. One definition of the lab, never duplicated here.
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 
 #region On-rails render helpers (same rhythm as Invoke-M02Upgrade.ps1) ----------

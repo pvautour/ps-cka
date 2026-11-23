@@ -2,8 +2,9 @@
 
 The same three Ubuntu 22.04 guests and pinned Kubernetes packages run on Linux
 using `vagrant-libvirt`. Provisioning stops before `kubeadm init`, just as on
-Windows. The Hyper-V PowerShell wrappers and recording scripts are not ported;
-use the Vagrant commands below instead.
+Windows. Linux Bash lifecycle, snapshot, initialization and recording equivalents
+are in [linux/README.md](linux/README.md). The direct Vagrant workflow below is
+also supported; PowerShell wrappers in `windows/` remain Hyper-V-specific.
 
 ## Prerequisites
 
@@ -67,6 +68,10 @@ Vagrant-prefixed; use Vagrant node names rather than assuming bare `virsh` names
 ## Boot and Validate
 
 Run from this lab directory as your normal user:
+
+For subsequent boots, `bash linux/Start-CkaLab.sh` starts without provisioning.
+Use `bash linux/Test-CkaLabReady.sh` for an aggregate all-node check and
+`bash linux/Test-CkaLabReady.sh --cluster` after bootstrap/join.
 
 ```bash
 vagrant up --provider=libvirt
@@ -249,6 +254,19 @@ packages. Use a separate lab copy for a different baseline.
 
 ## Snapshot and Restore
 
+The Linux wrappers preflight the entire lab and halt guests before changes:
+
+```bash
+bash linux/Save-CkaSnapshot.sh pre-cluster --yes
+bash linux/Restore-CkaSnapshot.sh pre-cluster --yes
+bash linux/Start-CkaLab.sh
+```
+
+Save/restore leave all guests halted. On any partial failure, resolve it before
+starting; operations are sequential, not transactional. `--dry-run` performs
+read-only preflights. See [linux/README.md](linux/README.md) for inventory/pruning,
+recording scripts and Linux-specific limitations. To use Vagrant directly:
+
 Stop every guest first so disks represent a quiescent cluster:
 
 ```bash
@@ -285,6 +303,7 @@ with mocked interfaces. They do not replace a live cluster readiness check.
 ```bash
 gem install --user-install minitest --no-document
 ruby tests/vagrant_config_test.rb
+ruby tests/linux_scripts_test.rb
 vagrant validate
 bash -n bootstrap_cp.sh
 ```

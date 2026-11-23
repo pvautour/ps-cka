@@ -114,12 +114,12 @@ param(
 
     # Where the exported baseline lands. Defaults to a dated folder beside the lab.
     [ValidateNotNullOrEmpty()]
-    [string]$ExportPath = (Join-Path -Path $PSScriptRoot -ChildPath 'baseline-exports')
+    [string]$ExportPath = (Join-Path -Path $PSScriptRoot -ChildPath '..\baseline-exports')
 )
 
 $ErrorActionPreference = 'Stop'
 
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 
 # Derive the minor (1.34) from the package string (1.34.6-1.1) so the two can

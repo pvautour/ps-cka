@@ -89,7 +89,7 @@ $ErrorActionPreference = 'Stop'
 
 # Reuse the shared engine: Write-* palette helpers, Get-CkaLabNodes (Name+IP),
 # Initialize-LabEncoding. One definition of the lab, never duplicated here.
-. (Join-Path -Path $PSScriptRoot -ChildPath 'lib\CkaLab.ps1')
+. (Join-Path -Path $PSScriptRoot -ChildPath '..\lib\CkaLab.ps1')
 Initialize-LabEncoding
 
 # The three nodes and their static IPs come from the shared module so this
