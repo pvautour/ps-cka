@@ -1,5 +1,3 @@
-require "json"
-
 Vagrant.configure("2") do |config|
   windows_host = Vagrant::Util::Platform.windows?
   ENV["VAGRANT_DEFAULT_PROVIDER"] ||= windows_host ? "hyperv" : "libvirt"
@@ -30,8 +28,11 @@ Vagrant.configure("2") do |config|
   end
 
   # --- Node definitions: hostname => static IP ---
-  NODES = JSON.parse(File.read(File.join(__dir__, "lib", "nodes.json")))
-    .to_h { |node| [node.fetch("Name"), node.fetch("IP")] }
+  NODES = {
+    "control1" => "192.168.50.10",
+    "worker1"  => "192.168.50.11",
+    "worker2"  => "192.168.50.12",
+  }
 
   GATEWAY = "192.168.50.1"
   DNS     = "8.8.8.8"
